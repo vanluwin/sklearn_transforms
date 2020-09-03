@@ -1,5 +1,6 @@
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.impute import SimpleImputer
+import numpy as np
 
 class DropColumns(BaseEstimator, TransformerMixin):
     """Elimina Colunas não necessárias para o modelo"""
@@ -14,25 +15,24 @@ class DropColumns(BaseEstimator, TransformerMixin):
 
         return data.drop(labels=self.columns, axis='columns')
 
-class MergeClasses(BaseEstimator, TransformerMixin):
-    """Junta as classes alvo de classificação"""
-    def __init__(self, target, new_value):
-        self.target = target
-        self.new_value = new_value
+class InsertColumns(BaseEstimator, TransformerMixin):
+    """Elimina Colunas não necessárias para o modelo"""
 
     def fit(self, x, y=None):
         return self
-
+    
     def transform(self, x):
         data = x.copy()
 
-        return data.replace(self.target, self.new_value)
+        data['REPROVACOES_H'] = data['REPROVACOES_DE'] + data['REPROVACOES_EM']
+        data['REPROVACOES_E'] = data['REPROVACOES_MF'] + data['REPROVACOES_GO']
+        data['MEDIA_H'] = (data['NOTA_DE'] + data['NOTA_EM'])/2
+        data['MEDIA_E'] = (data['NOTA_MF'] + data['NOTA_GO'])/2
+
+        return data
 
 class ReplaceMissingValues(BaseEstimator, TransformerMixin):
     """ Substitui uma coluna com a média e a outra com zeros"""
-    def __init__(self, mean_column, zero_column):
-        self.mean_column = mean_column
-        self.zero_column = zero_column
 
     def fit(self, x, y=None):
         return self
@@ -40,10 +40,20 @@ class ReplaceMissingValues(BaseEstimator, TransformerMixin):
     def transform(self, x):
         data = x.copy()
 
-        mean_imputer = SimpleImputer(strategy='mean')
-        zero_imputer = SimpleImputer(strategy='constant', fill_value=0)
+        ingles_count = data[[
+            'INGLES', 'PERFIL'
+        ]].groupby('PERFIL').agg(lambda x:x.value_counts().index[0])
 
-        data[[self.mean_column]] = mean_imputer.fit_transform(data[[self.mean_column]])
-        data[[self.zero_column]] = zero_imputer.fit_transform(data[[self.zero_column]])
+        data['INGLES'] = data.apply(
+            lambda row: ingles_count.loc[row['PERFIL']]['INGLES'] if np.isnan(row['INGLES']) else row['INGLES'],
+            axis=1
+        )
+
+        nota_go_mean = data[['NOTA_GO', 'PERFIL']].groupby(['PERFIL']).mean()
+
+        data['NOTA_GO'] = data.apply(
+            lambda row: nota_go_mean.loc[row['PERFIL']]['NOTA_GO'] if np.isnan(row['NOTA_GO']) else row['NOTA_GO'],
+            axis=1
+        )
 
         return data
